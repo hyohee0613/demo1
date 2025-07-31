@@ -1,0 +1,65 @@
+name: CI/CD Deploy   # ✅ 워크플로우의 이름 (Actions 탭에서 표시됨)
+
+on:                  # ✅ 워크플로우가 언제 실행될지 정의
+  push:              # ✅ push 이벤트가 발생하면 실행
+    branches: [ main ]  # ✅ main 브랜치에 push될 때만 배포 진행
+
+jobs:                # ✅ 실제 실행할 작업(job)들을 정의
+  build:             # ✅ 첫 번째 job: 빌드 단계
+    runs-on: ubuntu-latest  # ✅ GitHub Actions에서 Ubuntu 환경 사용
+
+    steps:           # ✅ 빌드 job에서 실행할 단계들
+      - name: Checkout source code       # ✅ 1. 저장소 코드 가져오기
+        uses: actions/checkout@v4        # ✅ GitHub 공식 액션으로 소스를 워크플로우 환경에 다운로드
+
+      - name: Set up JDK 17              # ✅ 2. Java 17 설치
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'        # ✅ OpenJDK Temurin 배포판 사용
+          java-version: '17'             # ✅ Java 17 버전 지정 (Spring Boot 최신 버전 호환)
+
+      - name: Grant permission to gradlew    # ✅ 3. gradlew에 실행 권한 부여
+        run: chmod +x ./gradlew             # ✅ Linux 환경에서 gradlew 실행 시 권한 필요
+
+      # ✅ 빌드 시 테스트 제외 (원하면 --no-daemon만 사용)
+      - name: Build Spring Boot App         # ✅ 4. Spring Boot 애플리케이션 빌드
+        run: ./gradlew clean build -x test  # ✅ 테스트는 제외(-x test)하여 빌드 속도 향상
+
+      # ✅ 빌드된 JAR 업로드 (워크플로우 아티팩트로 저장)
+      - name: Upload JAR Artifact           # ✅ 5. 빌드 결과(JAR 파일)를 아티팩트로 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: app                         # ✅ 아티팩트 이름을 "app"으로 지정
+          path: build/libs/demo-[0-9.]*-SNAPSHOT.jar  # ✅ 업로드할 파일 경로 (패턴 사용)
+
+  deploy:                # ✅ 두 번째 job: 배포 단계
+    needs: build         # ✅ build job이 성공해야 실행됨 (의존성 설정)
+    runs-on: ubuntu-latest
+
+    steps:
+      # ✅ 빌드된 JAR 다운로드
+      - name: Download JAR Artifact        # ✅ 6. 앞에서 업로드한 아티팩트를 다운로드
+        uses: actions/download-artifact@v4
+        with:
+          name: app                         # ✅ 위에서 업로드한 아티팩트 이름과 일치해야 함
+
+      # ✅ EC2로 JAR 복사
+      - name: Deploy to EC2                # ✅ 7. EC2 서버로 JAR 파일 전송
+        uses: appleboy/scp-action@v0.1.7   # ✅ scp(Secure Copy)를 통해 파일 업로드
+        with:
+          host: ${{ secrets.EC2_HOST }}    # ✅ EC2 서버 IP (GitHub Secrets에서 가져옴)
+          username: ubuntu                 # ✅ EC2 로그인 사용자 (Ubuntu AMI는 ubuntu)
+          key: ${{ secrets.EC2_SSH_KEY }}  # ✅ EC2 SSH 비밀키 (Secrets에 저장된 값)
+          source: "*.jar"                  # ✅ 현재 디렉토리의 JAR 파일을 전송
+          target: "/home/ubuntu/app/"      # ✅ EC2에 업로드할 경로
+          overwrite: true                  # ✅ 기존 파일 덮어쓰기 허용
+
+      # ✅ EC2에서 애플리케이션 실행
+      - name: Restart Spring Boot on EC2   # ✅ 8. EC2에서 애플리케이션 재시작
+        uses: appleboy/ssh-action@v0.1.10  # ✅ SSH를 통해 EC2에서 명령 실행
+        with:
+          host: ${{ secrets.EC2_HOST }}    # ✅ 동일하게 EC2 서버 IP
+          username: ubuntu                 # ✅ EC2 사용자
+          key: ${{ secrets.EC2_SSH_KEY }}  # ✅ SSH 비밀키
+          script: |                        # ✅ 아래 명령어들을 EC2에서 실행
+            bash /home/ubuntu/app/run-deploy.sh   # ✅ EC2에 저장된 실행 스크립트(run-deploy.sh) 실행

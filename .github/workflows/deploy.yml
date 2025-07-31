@@ -30,7 +30,7 @@ jobs:                # ✅ 실제 실행할 작업(job)들을 정의
         uses: actions/upload-artifact@v4
         with:
           name: app                         # ✅ 아티팩트 이름을 "app"으로 지정
-          path: build/libs/demo-[0-9.]*-SNAPSHOT.jar  # ✅ 업로드할 파일 경로 (패턴 사용)
+          path: build/libs/demo1-[0-9.]*-SNAPSHOT.jar  # ✅ 업로드할 파일 경로 (패턴 사용)
 
   deploy:                # ✅ 두 번째 job: 배포 단계
     needs: build         # ✅ build job이 성공해야 실행됨 (의존성 설정)
